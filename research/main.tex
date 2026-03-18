@@ -1,0 +1,98 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Custom Deep Q-Learning Architecture for Dynamic Maze Solving using C++ and SDL3 Visualization}
+\author{\IEEEauthorblockN{1\textsuperscript{st} Author}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{Institution Address}\\
+email address}
+}
+
+\maketitle
+
+\begin{abstract}
+This paper presents the design and implementation of a custom Deep Reinforcement Learning (DRL) agent capable of solving randomly generated mazes. Unlike typical implementations that heavily rely on high-level Python libraries such as TensorFlow or PyTorch, this project implements a Deep Q-Network (DQN) entirely from scratch using standard C++. Furthermore, the system integrates SDL3 to render the learning process in real-time, providing an intuitive interface to observe the agent's exploration and optimization. We detail the recursive backtracking maze generation, the Multi-layer Perceptron (MLP) architecture, the reward structures, and experience replay mechanisms. Results demonstrate successful pathfinding convergence and highlight the educational and performance benefits of bare-metal gradient descent implementations.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Deep Q-Learning, Reinforcement Learning, C++, SDL3, Neural Networks, Pathfinding, Maze Generation
+\end{IEEEkeywords}
+
+\section{Introduction}
+Pathfinding and maze-solving are classic problems in the field of Artificial Intelligence. Traditional algorithms such as Depth-First Search (DFS), Breadth-First Search (BFS), and A* offer deterministic guarantees for finding shortest paths. However, they require full knowledge of the environmental topology and do not adaptively learn from their interactions. Reinforcement Learning (RL), specifically Q-Learning, introduces a paradigm where an agent learns an optimal policy through trial, error, and delayed rewards.
+
+As the state space of environments grows (e.g., dynamically expanding maze sizes), tabular Q-Learning becomes intractable due to the curse of dimensionality. Deep Q-Networks (DQN) mitigate this by employing artificial neural networks as function approximators to estimate Q-values. 
+
+While numerous modern frameworks abstract away the complexities of training such networks, there is profound value in building neural algorithms from the ground up. This paper documents the development of a real-time maze solver written purely in C++. By coupling a custom Neural Network with SDL3-based graphics, we provide a performant, dependency-free application that visually demonstrates the transition of an agent from random exploration to deterministic exploitation.
+
+\section{Methodology}
+
+\subsection{Maze Generation Environment}
+The underlying environment is modeled as a 2D discrete grid where cells are categorized as passable paths or impassable walls. To ensure that every generated maze forms a valid spanning tree with guaranteed solvability, we utilize a Recursive Backtracking algorithm. Starting from the top-left coordinate, the algorithm recursively carves out paths by breaking walls in randomized, valid directions, inherently maximizing spatial complexity and creating dead ends that challenge the RL agent.
+
+\subsection{State Representation and Action Space}
+Effective representations of the environment state are critical for MLP convergence. Instead of a simplistic $(x, y)$ coordinate representation which lacks spatial context, our state vector $S$ encapsulates 8 normalized features:
+\begin{enumerate}
+    \item $x / W$: Normalized horizontal position.
+    \item $y / W$: Normalized vertical position.
+    \item 4 Boolean Indicators: Representing whether immediate orthogonal cells (Up, Down, Left, Right) are valid paths or walls.
+    \item Target Distance $X$: Normalized horizontal distance to the end goal.
+    \item Target Distance $Y$: Normalized vertical distance to the end goal.
+\end{enumerate}
+The action space consists of 4 discrete movement commands: Up, Down, Left, and Right.
+
+\subsection{Reward Architecture}
+The agent learns to navigate through the systematic evaluation of transitions via a carefully tuned reward function:
+\begin{itemize}
+    \item \textbf{Goal states:} Reaching the target yields a massive positive reward ($+100$).
+    \item \textbf{Collisions:} Attempting to move into a wall yields a harsh negative reward ($-5$) and leaves the position unchanged.
+    \item \textbf{Living Penalty:} Every valid step incurs a minor penalty ($-0.1$) to encourage shortest-path exploration.
+    \item \textbf{Start Penalty:} Returning to the initial start index yields a penalty ($-10$) to heavily discourage backtracking to the origin.
+\end{itemize}
+
+\subsection{Deep Q-Network (DQN) Architecture}
+To approximate the optimal action-value function $Q^*(s, a)$, we implemented a Multi-Layer Perceptron using standard C++ constructs. 
+The network topology consists of an Input Layer (8 nodes corresponding to the state vector), two Hidden Layers (128 nodes each), and an Output Layer (4 nodes corresponding to Q-values of actions). 
+
+Weights are initialized using the He Initialization standard, distributing weights based on a Gaussian distribution $\mathcal{N}(0, \sqrt{2/n_{in}})$. We employ the Rectified Linear Unit (ReLU) activation function for internal layers to prevent vanishing gradients, while the output layer remains linear. Optimization is achieved via basic Stochastic Gradient Descent.
+
+\subsection{Experience Replay and Stability}
+Correlations between consecutive states severely destabilize the learning process. We utilize an Experience Replay Buffer containing up to $50,000$ transitions $(s, a, r, s', \text{done})$. During the training step, a randomized mini-batch of size 64 is iteratively sampled. 
+
+To mitigate moving target distributions, we instantiated a separate \textit{Target Network} $\hat{Q}$, whose weights freeze and only synchronize with the primary network $Q$ every 100 steps. The target value for the Mean Squared Error (MSE) loss is calculated using the Bellman Equation:
+\begin{equation}
+y_j = 
+\begin{cases} 
+r_j & \text{if episode terminates at } j+1\\
+r_j + \gamma \max_{a'} \hat{Q}(s_{j+1}, a') & \text{otherwise}
+\end{cases}
+\end{equation}
+
+\section{Implementation Details}
+The entire application operates within a main SDL3 simulation loop. We decoupled the execution speeds of the training logic from the rendering logic to balance processing efficiency with user interpretability. During the initial $\epsilon$-greedy exploration phases, the agent evaluates up to 50 steps per frame, allowing the network to rapidly train. 
+
+Once the defined episodic threshold is met and epsilon has naturally decayed via $\epsilon = \epsilon \times 0.995$, the system switches to an Evaluation mode. In this mode, SDL3 renders the established optimal path in a distinct color (Green), distinguishing it from paths that were merely explored (Red).
+
+\section{Results}
+Testing was conducted iteratively across $5\times5$, $10\times10$, and $20\times20$ dimensional mazes. The agent effectively escapes local minima dynamically created by blind corners. Early trials show entirely chaotic uniform distributions across the grid (indicated visually by high Red cell volumes). As mini-batch sampling enforces Q-value approximations upon the MLP weights, the agent progressively isolates the shortest sub-paths. By episode 100 (for smaller variants), it robustly traverses the maze entirely via target Q predictions, rendering the final path correctly.
+
+\section{Conclusion and Future Scope}
+This project successfully integrates a low-level, dependency-free Deep Reinforcement Learning backend with high-performance real-time visual output via SDL3. Bridging the gap between conceptual algorithms and memory-managed implementations in C++ demonstrates profound computational potential. 
+
+Future extensions will include implementing Adaptive Moment Estimation (Adam) for the gradient descent optimization layer to dramatically improve convergence rates on larger maze configurations, as well as migrating the architecture toward Convolutional Neural Networks (CNNs) capable of deriving state data directly from SDL3 pixel buffers.
+
+\begin{thebibliography}{00}
+\bibitem{mnih2015human} V. Mnih, K. Kavukcuoglu, D. Silver, et al., ``Human-level control through deep reinforcement learning,'' \textit{Nature}, vol. 518, no. 7540, pp. 529--533, 2015.
+\bibitem{sutton1998reinforcement} R. S. Sutton and A. G. Barto, \textit{Reinforcement Learning: An Introduction}. Cambridge, MA, USA: MIT Press, 1998.
+\bibitem{he2015delving} K. He, X. Zhang, S. Ren, and J. Sun, ``Delving deep into rectifiers: Surpassing human-level performance on imagenet classification,'' in \textit{Proceedings of the IEEE international conference on computer vision}, 2015.
+\end{thebibliography}
+\end{document}
