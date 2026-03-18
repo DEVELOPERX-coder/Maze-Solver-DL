@@ -59,23 +59,40 @@ The agent learns to navigate through the systematic evaluation of transitions vi
     \item \textbf{Start Penalty:} Returning to the initial start index yields a penalty ($-10$) to heavily discourage backtracking to the origin.
 \end{itemize}
 
-\subsection{Deep Q-Network (DQN) Architecture}
+\subsection{Mathematical Formulation of the Deep Q-Network}
 To approximate the optimal action-value function $Q^*(s, a)$, we implemented a Multi-Layer Perceptron using standard C++ constructs. 
+The objective of the reinforcement learning agent is to find the optimal policy $\pi^*$ that maximizes the expected cumulative discounted reward:
+\begin{equation}
+R_t = \sum_{k=0}^{\infty} \gamma^k r_{t+k+1}
+\end{equation}
+where $\gamma \in [0, 1)$ is the discount factor establishing the half-life of future rewards. The optimal Action-Value function is defined by the Bellman Optimality Equation:
+\begin{equation}
+Q^*(s, a) = \mathbb{E}_{s'} [r + \gamma \max_{a'} Q^*(s', a') | s, a]
+\end{equation}
+
+Because tabular methods fail to scale with the combinatorial explosion of states in dynamically scaling grids, a continuous function approximator $Q(s, a; \theta) \approx Q^*(s, a)$ is parameterized by a custom neural network with weights $\theta$.
+
 The network topology consists of an Input Layer (8 nodes corresponding to the state vector), two Hidden Layers (128 nodes each), and an Output Layer (4 nodes corresponding to Q-values of actions). 
 
-Weights are initialized using the He Initialization standard, distributing weights based on a Gaussian distribution $\mathcal{N}(0, \sqrt{2/n_{in}})$. We employ the Rectified Linear Unit (ReLU) activation function for internal layers to prevent vanishing gradients, while the output layer remains linear. Optimization is achieved via basic Stochastic Gradient Descent.
+Weights are initialized using the He Initialization standard, distributing values from a Gaussian distribution $\mathcal{N}(0, \sqrt{2/n_{in}})$. We employ the Rectified Linear Unit (ReLU) activation function, mathematically defined as $f(x) = \max(0, x)$, for internal layers to prevent vanishing gradients during deep backpropagation. The output layer utilizes linear activations, maintaining unbounded domain approximations for diverging Q-values.
 
-\subsection{Experience Replay and Stability}
-Correlations between consecutive states severely destabilize the learning process. We utilize an Experience Replay Buffer containing up to $50,000$ transitions $(s, a, r, s', \text{done})$. During the training step, a randomized mini-batch of size 64 is iteratively sampled. 
+\subsection{Experience Replay, Temporal Difference, and Stability}
+Correlations between consecutive states severely destabilize the learning process. We utilize an Experience Replay Buffer $D$ containing up to $50,000$ transitions $(s, a, r, s', \text{done})$. During the training step, a randomized mini-batch $U(D)$ of size 64 is iteratively sampled. 
 
-To mitigate moving target distributions, we instantiated a separate \textit{Target Network} $\hat{Q}$, whose weights freeze and only synchronize with the primary network $Q$ every 100 steps. The target value for the Mean Squared Error (MSE) loss is calculated using the Bellman Equation:
+To mitigate moving target distributions, a separate \textit{Target Network} parameterized by frozen weights $\theta^-$ is instantiated. The target network synchronizes with the primary network $\theta$ strictly every 100 steps. The loss function $L_i(\theta_i)$ for training iteration $i$ is quantified by the Mean Squared Error (MSE) of the Temporal Difference (TD):
 \begin{equation}
-y_j = 
-\begin{cases} 
-r_j & \text{if episode terminates at } j+1\\
-r_j + \gamma \max_{a'} \hat{Q}(s_{j+1}, a') & \text{otherwise}
-\end{cases}
+L_i(\theta_i) = \mathbb{E}_{(s,a,r,s') \sim U(D)} \left[ \left( y_i^{DQN} - Q(s, a; \theta_i) \right)^2 \right]
 \end{equation}
+where $y_i^{DQN}$ serves as the robust target value derived via the Bellman Operator:
+\begin{equation}
+y_i^{DQN} = r + \gamma \max_{a'} \hat{Q}(s', a'; \theta_i^-)
+\end{equation}
+
+Differentiating the loss function with respect to the continuous network weights $\theta_i$ provides the gradient vector necessary for optimization via Stochastic Gradient Descent (SGD):
+\begin{equation}
+\nabla_{\theta_i} L_i(\theta_i) = \mathbb{E}_{s,a,r,s'} \left[ \big( y_i^{DQN} - Q(s, a; \theta_i) \big) \nabla_{\theta_i} Q(s, a; \theta_i) \right]
+\end{equation}
+This gradient elegantly cascades backwards across the Multi-Layer Perceptron layers utilizing the standard chain rule of calculus, directly decrementing the specific matrix tensors within the bare-metal C++ framework.
 
 \section{Implementation Details}
 The entire application operates within a main SDL3 simulation loop. We decoupled the execution speeds of the training logic from the rendering logic to balance processing efficiency with user interpretability. During the initial $\epsilon$-greedy exploration phases, the agent evaluates up to 50 steps per frame, allowing the network to rapidly train. 

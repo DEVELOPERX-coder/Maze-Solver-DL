@@ -21,6 +21,7 @@ struct Layer {
     vector<double> deltas;
 
     Layer(int in, int out, mt19937& gen) : in_size(in), out_size(out) {
+        // He Initialization
         normal_distribution<double> dist(0.0, sqrt(2.0 / in));
         weights.assign(out, vector<double>(in, 0.0));
         biases.assign(out, 0.0);
@@ -41,7 +42,7 @@ struct Layer {
             for (int j = 0; j < in_size; ++j) {
                 sum += weights[i][j] * inputs[j];
             }
-            outputs[i] = is_output ? sum : max(0.0, sum); // ReLU
+            outputs[i] = is_output ? sum : max(0.0, sum); // ReLU activation
         }
     }
 };
@@ -51,7 +52,7 @@ public:
     vector<Layer> layers;
     double learning_rate;
 
-    NeuralNetwork() : learning_rate(0.001) {} // Default
+    NeuralNetwork() : learning_rate(0.001) {} 
 
     NeuralNetwork(vector<int> topology, double lr, mt19937& gen) : learning_rate(lr) {
         for (size_t i = 1; i < topology.size(); ++i) {
@@ -71,10 +72,12 @@ public:
     void train(const vector<double>& input, const vector<double>& target) {
         predict(input); 
 
+        // Output layer deltas
         for (int i = 0; i < layers.back().out_size; ++i) {
             layers.back().deltas[i] = layers.back().outputs[i] - target[i];
         }
 
+        // Hidden layers backpropagation
         for (int l = layers.size() - 2; l >= 0; --l) {
             for (int i = 0; i < layers[l].out_size; ++i) {
                 double error = 0.0;
@@ -85,6 +88,7 @@ public:
             }
         }
 
+        // SGD Updates
         for (size_t l = 0; l < layers.size(); ++l) {
             for (int i = 0; i < layers[l].out_size; ++i) {
                 layers[l].biases[i] -= learning_rate * layers[l].deltas[i];
@@ -113,7 +117,7 @@ public:
     int end_x, end_y;
 
     Maze(int size) : n(size), width(2 * size + 1) {
-        grid.assign(width * width, 0);
+        grid.assign(width * width, 0); // 0 = wall
         start_x = 1; start_y = 1;
         end_x = width - 2; end_y = width - 2;
     }
@@ -138,7 +142,7 @@ public:
 
                 if (nx > 0 && ny > 0 && nx < width - 1 && ny < width - 1 && grid[ny * width + nx] == 0) {
                     grid[ny * width + nx] = 1;
-                    grid[(cy + dy[i]/2) * width + (cx + dx[i]/2)] = 1;
+                    grid[(cy + dy[i]/2) * width + (cx + dx[i]/2)] = 1; // carve path between
                     stack.push_back({nx, ny});
                     moved = true;
                     break;
@@ -174,6 +178,7 @@ public:
     mt19937& gen;
 
     DQLAgent(mt19937& g) : 
+        // 8 inputs -> two 128 hidden layers -> 4 outputs
         q_net({8, 128, 128, 4}, 0.005, g), 
         target_net({8, 128, 128, 4}, 0.005, g), 
         gen(g) {
@@ -236,7 +241,7 @@ public:
     }
 };
 
-// --- SDL Visualization & Main Loop ---
+// --- SDL Visualization Details ---
 void draw_rect(SDL_Renderer* renderer, int x, int y, int w, int h, int r, int g, int b, int a) {
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
     SDL_FRect rect = {(float)x, (float)y, (float)w, (float)h};
@@ -247,6 +252,13 @@ int main(int argc, char* argv[]) {
     int maze_size = 5;
     cout << "Enter maze size (e.g. 5, max 20 recommended for fast learning): ";
     if (!(cin >> maze_size)) return 1;
+
+    cout << "\n=============================================\n";
+    cout << "       RL MAZE SOLVER VISUALIZER\n";
+    cout << "=============================================\n";
+    cout << "CONTROLS:\n";
+    cout << "  [SPACE] - Toggle Fast-Forward Training Mode\n";
+    cout << "=============================================\n\n";
 
     random_device rd;
     mt19937 gen(rd());
@@ -288,6 +300,7 @@ int main(int argc, char* argv[]) {
     int dy[4] = {-1, 1, 0, 0};
 
     bool training = true;
+    bool fast_forward = false; // start slow so user sees it move!
     int episodes = 0;
     const int max_episodes = 2000;
     int steps_in_ep = 0;
@@ -295,23 +308,31 @@ int main(int argc, char* argv[]) {
     vector<pair<int, int>> current_path;
     vector<pair<int, int>> best_path;
     vector<int> explored(maze.width * maze.width, 0);
+    vector<int> episode_visited(maze.width * maze.width, 0);
 
-    auto last_time = chrono::high_resolution_clock::now();
+    current_path.push_back({agent_x, agent_y});
 
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
+            } else if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.key == SDLK_SPACE) {
+                    fast_forward = !fast_forward;
+                    if (fast_forward) cout << ">> Fast Forward Mode: ON (Accelerated Training)\n";
+                    else cout << ">> Fast Forward Mode: OFF (Visualizing individual steps)\n";
+                }
             }
         }
 
-        // Training logic per frame (multiple steps to speed up)
-        int steps_per_frame = training ? 50 : 5;
+        // Single step if not fast forwarding! Prevents the "teleportation" feeling
+        int steps_per_frame = training ? (fast_forward ? 100 : 1) : 1;
+
         for (int step = 0; step < steps_per_frame && running; ++step) {
             if (!training) {
-                // Evaluation mode
+                // Evaluation Mode
                 vector<double> state = agent.get_state(maze, agent_x, agent_y);
-                int action = agent.act(state, false); // No exploration
+                int action = agent.act(state, false); 
                 
                 int nx = agent_x + dx[action];
                 int ny = agent_y + dy[action];
@@ -330,8 +351,8 @@ int main(int argc, char* argv[]) {
                     current_path.push_back({agent_x, agent_y});
                 }
                 
-                SDL_Delay(50); // delay to see the agent move
-                break; // 1 step per frame during evaluation
+                SDL_Delay(50); // delay so it isn't instant
+                break; // 1 step per frame always
             }
 
             // Training mode
@@ -341,7 +362,7 @@ int main(int argc, char* argv[]) {
             int nx = agent_x + dx[action];
             int ny = agent_y + dy[action];
 
-            double reward = -0.1; // Living penalty
+            double reward = 0.0;
             bool done = false;
 
             if (maze.is_valid(nx, ny)) {
@@ -350,14 +371,22 @@ int main(int argc, char* argv[]) {
                 current_path.push_back({agent_x, agent_y});
                 explored[agent_y * maze.width + agent_x] = 1;
 
+                // Greatly improved reward structure prevents aimless wandering
+                episode_visited[agent_y * maze.width + agent_x]++;
+                if (episode_visited[agent_y * maze.width + agent_x] > 1) {
+                    reward = -1.0; // Penalty for revisiting cells
+                } else {
+                    reward = 1.0;  // Reward for discovering new geometry
+                }
+
                 if (agent_x == maze.end_x && agent_y == maze.end_y) {
                     reward = 100.0;
                     done = true;
                 } else if (agent_x == maze.start_x && agent_y == maze.start_y) {
-                    reward = -10.0; // penalize going back to start
+                    reward = -10.0; // Heavily penalize walking back to init
                 }
             } else {
-                reward = -5.0; // Hit wall
+                reward = -5.0; // Penalty indicating wall hit
             }
 
             vector<double> next_state = agent.get_state(maze, agent_x, agent_y);
@@ -365,30 +394,40 @@ int main(int argc, char* argv[]) {
             agent.replay();
 
             steps_in_ep++;
+            // Terminate episode if won, or if agent takes way too many steps (stuck)
             if (done || steps_in_ep > maze.width * maze.width * 2) {
                 if (done) {
-                    cout << "Episode " << episodes << " won! Steps: " << steps_in_ep << " Epsilon: " << agent.epsilon << endl;
+                    cout << "Episode " << episodes << " won! Steps: " << steps_in_ep 
+                         << " Epsilon: " << agent.epsilon << endl;
                     best_path = current_path;
                 }
                 
+                // Reset for next episode
                 agent_x = maze.start_x;
                 agent_y = maze.start_y;
                 steps_in_ep = 0;
                 episodes++;
+                
                 current_path.clear();
                 current_path.push_back({agent_x, agent_y});
+                
+                fill(episode_visited.begin(), episode_visited.end(), 0);
 
                 if (episodes >= max_episodes) {
                     training = false;
                     agent_x = maze.start_x;
                     agent_y = maze.start_y;
                     current_path.clear();
+                    current_path.push_back({agent_x, agent_y});
                     cout << "Training finished. Starting evaluation mode." << endl;
                 }
+                
+                // Add a small visual delay on episode end during normal speed so it doesn't instantly snap back
+                if (!fast_forward) SDL_Delay(200); 
             }
         }
 
-        // Rendering
+        // --- RENDER ---
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
@@ -397,29 +436,38 @@ int main(int argc, char* argv[]) {
                 if (maze.grid[y * maze.width + x] == 0) {
                     draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 40, 40, 40, 255); // Wall
                 } else {
-                    if (!training && find(best_path.begin(), best_path.end(), make_pair(x, y)) != best_path.end()) {
-                        draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 100, 255, 100, 255); // Final path Green
+                    if (!best_path.empty() && find(best_path.begin(), best_path.end(), make_pair(x, y)) != best_path.end()) {
+                        draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 100, 255, 100, 255); // Green (Final Best)
                     } else if (explored[y * maze.width + x] == 1) {
-                        draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 255, 100, 100, 255); // Explored Red
+                        draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 255, 100, 100, 255); // Red (Currently Explored subset)
                     } else {
-                        draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 220, 220, 220, 255); // Path White
+                        draw_rect(renderer, x * cell_size, y * cell_size, cell_size, cell_size, 220, 220, 220, 255); // White (Unexplored)
                     }
                 }
             }
         }
 
-        // Start & End
+        // Draw start and end blocks clearly
         draw_rect(renderer, maze.start_x * cell_size, maze.start_y * cell_size, cell_size, cell_size, 0, 255, 255, 255); // Cyan
         draw_rect(renderer, maze.end_x * cell_size, maze.end_y * cell_size, cell_size, cell_size, 255, 0, 255, 255); // Magenta
 
-        // Agent
-        draw_rect(renderer, agent_x * cell_size + cell_size/4, agent_y * cell_size + cell_size/4, cell_size/2, cell_size/2, 100, 100, 255, 255); // Blue
+        // Draw current path trail dynamically so user sees exact route agent takes (no teleporting visual!)
+        if (current_path.size() > 1) {
+            for (size_t i = 0; i < current_path.size() - 1; ++i) {
+                int cx = current_path[i].first;
+                int cy = current_path[i].second;
+                draw_rect(renderer, cx * cell_size + cell_size/3, cy * cell_size + cell_size/3, cell_size/3, cell_size/3, 150, 150, 255, 255); // Light blue trail
+            }
+        }
+
+        // Draw active Agent
+        draw_rect(renderer, agent_x * cell_size + cell_size/4, agent_y * cell_size + cell_size/4, cell_size/2, cell_size/2, 50, 50, 255, 255); // Dark Blue
 
         SDL_RenderPresent(renderer);
 
-        // Cap framerate
+        // Frame pacing logic
         if (!training) SDL_Delay(50);
-        else SDL_Delay(10);
+        else if (!fast_forward) SDL_Delay(20); // Smooth real-time update
     }
 
     SDL_DestroyRenderer(renderer);
