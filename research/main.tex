@@ -123,6 +123,9 @@ y_i^{DQN} = r + \gamma \max_{a'} \hat{Q}(s', a'; \theta_i^-)
 \subsection{Action Selection ($\epsilon$-Greedy Policy)}
 Exploration versus exploitation is governed by an $\epsilon$-greedy algorithm. At Episode 0, $\epsilon = 1.0$, rendering decisions entirely stochastic. $\epsilon$ decays per replay batch update using $\epsilon_{t+1} = \epsilon_t \times 0.995$ until reaching a minimum floor of $0.05$. 
 
+\subsection{Episode Truncation and Timeout Strategy}
+To guarantee that the Reinforcement Learning agent escapes infinite sub-loops during early stochastic exploration, a strict algorithmic timeout mechanism is enforced. If the agent executes a quantity of steps exceeding $2 \times W^2$ (twice the total square area of the maze grid) without reaching the target outcome, the episode is forcibly truncated. This temporal limit rapidly shifts the agent out of unrecoverable gradient dead-ends and continuous cyclic traversals, guaranteeing exposure to distinctly new architectural topologies.
+
 \section{Implementation and Visualization Details}
 The entire application operates within a core SDL3 simulation loop, executing native `C++` code without intermediate bindings. To improve user interpretability, the visualization pipeline utilizes specific color coding strategies.
 
