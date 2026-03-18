@@ -169,7 +169,7 @@ public:
     deque<Experience> memory;
     int memory_size = 50000;
     int batch_size = 64;
-    double gamma = 0.95;
+    double gamma = 0.99;
     double epsilon = 1.0;
     double epsilon_min = 0.05;
     double epsilon_decay = 0.995;
@@ -178,15 +178,15 @@ public:
     mt19937& gen;
 
     DQLAgent(mt19937& g) : 
-        // 8 inputs -> two 128 hidden layers -> 4 outputs
-        q_net({8, 128, 128, 4}, 0.005, g), 
-        target_net({8, 128, 128, 4}, 0.005, g), 
+        // 12 inputs -> two 128 hidden layers -> 4 outputs
+        q_net({12, 128, 128, 4}, 0.001, g), 
+        target_net({12, 128, 128, 4}, 0.001, g), 
         gen(g) {
         target_net = q_net; 
     }
 
-    vector<double> get_state(const Maze& maze, int x, int y) {
-        vector<double> state(8, 0.0);
+    vector<double> get_state(const Maze& maze, int x, int y, const vector<int>& visited) {
+        vector<double> state(12, 0.0);
         state[0] = static_cast<double>(x) / maze.width;
         state[1] = static_cast<double>(y) / maze.width;
         state[2] = maze.is_valid(x, y - 1) ? 1.0 : 0.0;
@@ -195,6 +195,13 @@ public:
         state[5] = maze.is_valid(x + 1, y) ? 1.0 : 0.0;
         state[6] = static_cast<double>(maze.end_x - x) / maze.width;
         state[7] = static_cast<double>(maze.end_y - y) / maze.width;
+        
+        // Memory of visited neighbors (allows agent to "see" if it's about to backtrack)
+        state[8] = (y > 0 && visited[(y-1)*maze.width + x] > 0) ? 1.0 : 0.0;
+        state[9] = (y < maze.width-1 && visited[(y+1)*maze.width + x] > 0) ? 1.0 : 0.0;
+        state[10] = (x > 0 && visited[y*maze.width + x-1] > 0) ? 1.0 : 0.0;
+        state[11] = (x < maze.width-1 && visited[y*maze.width + x+1] > 0) ? 1.0 : 0.0;
+
         return state;
     }
 
@@ -331,7 +338,7 @@ int main(int argc, char* argv[]) {
         for (int step = 0; step < steps_per_frame && running; ++step) {
             if (!training) {
                 // Evaluation Mode
-                vector<double> state = agent.get_state(maze, agent_x, agent_y);
+                vector<double> state = agent.get_state(maze, agent_x, agent_y, episode_visited);
                 int action = agent.act(state, false); 
                 
                 int nx = agent_x + dx[action];
@@ -341,6 +348,7 @@ int main(int argc, char* argv[]) {
                     agent_x = nx;
                     agent_y = ny;
                     current_path.push_back({agent_x, agent_y});
+                    episode_visited[agent_y * maze.width + agent_x]++;
                 }
                 
                 if (agent_x == maze.end_x && agent_y == maze.end_y) {
@@ -349,6 +357,8 @@ int main(int argc, char* argv[]) {
                     best_path = current_path;
                     current_path.clear();
                     current_path.push_back({agent_x, agent_y});
+                    fill(episode_visited.begin(), episode_visited.end(), 0);
+                    episode_visited[agent_y * maze.width + agent_x]++;
                 }
                 
                 SDL_Delay(50); // delay so it isn't instant
@@ -356,7 +366,7 @@ int main(int argc, char* argv[]) {
             }
 
             // Training mode
-            vector<double> state = agent.get_state(maze, agent_x, agent_y);
+            vector<double> state = agent.get_state(maze, agent_x, agent_y, episode_visited);
             int action = agent.act(state);
 
             int nx = agent_x + dx[action];
@@ -374,9 +384,9 @@ int main(int argc, char* argv[]) {
                 // Greatly improved reward structure prevents aimless wandering
                 episode_visited[agent_y * maze.width + agent_x]++;
                 if (episode_visited[agent_y * maze.width + agent_x] > 1) {
-                    reward = -1.0; // Penalty for revisiting cells
+                    reward = -2.5; // Heavy Penalty for revisiting cells (looping)
                 } else {
-                    reward = 1.0;  // Reward for discovering new geometry
+                    reward = 2.0;  // High Reward for discovering new geometry
                 }
 
                 if (agent_x == maze.end_x && agent_y == maze.end_y) {
@@ -389,7 +399,7 @@ int main(int argc, char* argv[]) {
                 reward = -5.0; // Penalty indicating wall hit
             }
 
-            vector<double> next_state = agent.get_state(maze, agent_x, agent_y);
+            vector<double> next_state = agent.get_state(maze, agent_x, agent_y, episode_visited);
             agent.remember(state, action, reward, next_state, done);
             agent.replay();
 
