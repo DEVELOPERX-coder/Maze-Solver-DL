@@ -15,7 +15,9 @@ using namespace std;
 struct Layer {
     int in_size, out_size;
     vector<vector<double>> weights;
+    vector<vector<double>> v_weights; // SGD Momentum
     vector<double> biases;
+    vector<double> v_biases; // SGD Momentum
     vector<double> inputs;
     vector<double> outputs;
     vector<double> deltas;
@@ -24,7 +26,9 @@ struct Layer {
         // He Initialization
         normal_distribution<double> dist(0.0, sqrt(2.0 / in));
         weights.assign(out, vector<double>(in, 0.0));
+        v_weights.assign(out, vector<double>(in, 0.0));
         biases.assign(out, 0.0);
+        v_biases.assign(out, 0.0);
         for (int i = 0; i < out; ++i) {
             for (int j = 0; j < in; ++j) {
                 weights[i][j] = dist(gen);
@@ -88,12 +92,18 @@ public:
             }
         }
 
-        // SGD Updates
+        // SGD Updates with Momentum
+        double momentum = 0.9;
         for (size_t l = 0; l < layers.size(); ++l) {
             for (int i = 0; i < layers[l].out_size; ++i) {
-                layers[l].biases[i] -= learning_rate * layers[l].deltas[i];
+                double grad_b = layers[l].deltas[i];
+                layers[l].v_biases[i] = momentum * layers[l].v_biases[i] + learning_rate * grad_b;
+                layers[l].biases[i] -= layers[l].v_biases[i];
+                
                 for (int j = 0; j < layers[l].in_size; ++j) {
-                    layers[l].weights[i][j] -= learning_rate * layers[l].deltas[i] * layers[l].inputs[j];
+                    double grad_w = layers[l].deltas[i] * layers[l].inputs[j];
+                    layers[l].v_weights[i][j] = momentum * layers[l].v_weights[i][j] + learning_rate * grad_w;
+                    layers[l].weights[i][j] -= layers[l].v_weights[i][j];
                 }
             }
         }
@@ -167,13 +177,15 @@ public:
     NeuralNetwork target_net;
     NeuralNetwork q_net;
     deque<Experience> memory;
+    deque<Experience> goal_memory; // Prioritized buffer for sparse victories!
     int memory_size = 50000;
+    int goal_memory_size = 1000;
     int batch_size = 64;
     double gamma = 0.99;
     double epsilon = 1.0;
     double epsilon_min = 0.05;
-    double epsilon_decay = 0.995;
-    int target_update_freq = 100;
+    double epsilon_decay = 0.999; // Slower decay for huge mazes
+    int target_update_freq = 200; // Slower target sync for stability
     int steps = 0;
     mt19937& gen;
 
@@ -218,8 +230,15 @@ public:
     }
 
     void remember(const vector<double>& state, int action, double reward, const vector<double>& next_state, bool done) {
-        memory.push_back({state, action, reward, next_state, done});
+        Experience exp = {state, action, reward, next_state, done};
+        memory.push_back(exp);
         if (memory.size() > memory_size) memory.pop_front();
+        
+        // Push exclusively critical success states to the VIP goal memory
+        if (reward == 100.0) {
+            goal_memory.push_back(exp);
+            if (goal_memory.size() > goal_memory_size) goal_memory.pop_front();
+        }
     }
 
     void replay() {
@@ -227,6 +246,15 @@ public:
         
         vector<Experience> batch;
         sample(memory.begin(), memory.end(), back_inserter(batch), batch_size, gen);
+
+        // Sparse Reward Injection mechanism -> Over-sample the goal transitions!
+        if (!goal_memory.empty()) {
+            uniform_int_distribution<size_t> dist(0, goal_memory.size() - 1);
+            // Replace 4 slots of the 64-batch directly with vital goal paths
+            for (int i = 0; i < min(4, (int)goal_memory.size()); ++i) {
+                batch[i] = goal_memory[dist(gen)];
+            }
+        }
 
         for (const auto& exp : batch) {
             double target = exp.reward;
