@@ -46,7 +46,7 @@ While numerous modern frameworks abstract away the complexities of training neur
 Reinforcement Learning combined with deep neural networks reached widespread academic recognition through the development of Deep Q-Networks by Mnih et al. \cite{mnih2015human}, demonstrating superhuman performance in Atari environments. Pathfinding in procedurally generated environments has subsequently served as standard benchmarking tests for RL stability. While standard navigation relies heavily on Convolutional Neural Networks (CNNs) to process raw pixel data \cite{he2015delving}, discrete localized grid navigations can often be solved via flattened state representations. Our methodology leverages localized spatial awareness arrays within a feed-forward MLP, an approach highly correlated with biological local-vision tracking.
 
 \section{Environment and Maze Generation}
-The underlying environment is modeled as a 2D discrete grid where cells are strictly categorized as passable paths or impassable walls. 
+The underlying environment is modeled as a 2D discrete grid where cells are strictly categorized as passable paths or impassable walls. The physical scalar width $W$ of the environment is dynamically calculated from a user-defined complexity input $n$ using the discrete transform curve $W = 2n + 1$. This explicit arithmetic is required to mathematically guarantee that all individual path branches are separated by exactly one orthogonal wall unit, while simultaneously remaining encapsulated by a solid outer geometric boundary.
 
 \begin{figure}[htbp]
 \centerline{\includegraphics[width=0.7\columnwidth]{figures/maze_generation.png}}

@@ -14,6 +14,10 @@ In Reinforcement Learning, the agent uses an **$\epsilon$-greedy policy**.
 - As episodes pass, $\epsilon$ slowly decays down to `0.05` (5%). 
 - As $\epsilon$ drops, the agent relies more heavily on the Neural Network approximations to "exploit" the shortest path it has learned, drastically reducing wandering!
 
+## Maze Size Calculation
+When you input a size `n` (e.g., `5`), the program physically generates a grid that is **2n + 1** squares wide and tall (e.g., `11x11`). 
+This arithmetic is required because the Recursive Backtracking algorithm creates discrete branching paths that are exactly 1 block wide, separated by walls that must also be 1 block wide, plus a solid boundary on all outer edges.
+
 ## Controls
 While the `maze_solver.exe` window is focused:
 - **[SPACE]** - Toggle Fast-Forward Mode. Switches between visualizing the agent's movements exactly step-by-step (slow), and calculating multiple gradients per frame to aggressively speed up the training (fast!).
