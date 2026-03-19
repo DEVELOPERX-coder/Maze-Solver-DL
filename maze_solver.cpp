@@ -297,6 +297,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Initialize Audio
+    mciSendStringA("open \"Sound/Correct.mp3\" type mpegvideo alias snd_correct", NULL, 0, NULL);
+    mciSendStringA("open \"Sound/Wrong.mp3\" type mpegvideo alias snd_wrong", NULL, 0, NULL);
+
     int cell_size = window_size / maze.width;
 
     bool running = true;
@@ -360,7 +364,7 @@ int main(int argc, char* argv[]) {
                     current_path.push_back({agent_x, agent_y});
                     fill(episode_visited.begin(), episode_visited.end(), 0);
                     episode_visited[agent_y * maze.width + agent_x]++;
-                    mciSendStringA("play Correct.mp3 from 0", NULL, 0, NULL);
+                    mciSendStringA("play snd_correct from 0", NULL, 0, NULL);
                 }
                 
                 SDL_Delay(50); // delay so it isn't instant
@@ -412,9 +416,9 @@ int main(int argc, char* argv[]) {
                     cout << "Episode " << episodes << " won! Steps: " << steps_in_ep 
                          << " Epsilon: " << agent.epsilon << endl;
                     best_path = current_path;
-                    if (!fast_forward) mciSendStringA("play Correct.mp3 from 0", NULL, 0, NULL);
+                    if (!fast_forward) mciSendStringA("play snd_correct from 0", NULL, 0, NULL);
                 } else {
-                    if (!fast_forward) mciSendStringA("play Wrong.mp3 from 0", NULL, 0, NULL);
+                    if (!fast_forward) mciSendStringA("play snd_wrong from 0", NULL, 0, NULL);
                 }
                 
                 // Reset for next episode
