@@ -6,6 +6,7 @@
 #include <deque>
 #include <memory>
 #include <chrono>
+#include <windows.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
@@ -359,6 +360,7 @@ int main(int argc, char* argv[]) {
                     current_path.push_back({agent_x, agent_y});
                     fill(episode_visited.begin(), episode_visited.end(), 0);
                     episode_visited[agent_y * maze.width + agent_x]++;
+                    mciSendStringA("play Correct.mp3 from 0", NULL, 0, NULL);
                 }
                 
                 SDL_Delay(50); // delay so it isn't instant
@@ -410,6 +412,9 @@ int main(int argc, char* argv[]) {
                     cout << "Episode " << episodes << " won! Steps: " << steps_in_ep 
                          << " Epsilon: " << agent.epsilon << endl;
                     best_path = current_path;
+                    if (!fast_forward) mciSendStringA("play Correct.mp3 from 0", NULL, 0, NULL);
+                } else {
+                    if (!fast_forward) mciSendStringA("play Wrong.mp3 from 0", NULL, 0, NULL);
                 }
                 
                 // Reset for next episode
